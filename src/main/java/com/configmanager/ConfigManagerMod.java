@@ -19,27 +19,37 @@ public class ConfigManagerMod {
     private static final Gson GSON = new Gson();
 
     public ConfigManagerMod() {
-        syncConfigs();
+        // 同步 config 目录
+        syncConfigs("config-manager", "config", "ConfigManager");
+        // 同步 defaultconfigs 目录
+        syncConfigs("default-config-manager", "defaultconfigs", "DefaultConfigManager");
     }
 
-    private void syncConfigs() {
+    /**
+     * 同步指定目录的配置文件。
+     *
+     * @param sourceSubDir kubejs 下的源子目录名（如 "config-manager"）
+     * @param targetSubDir 游戏根目录下的目标子目录名（如 "config" 或 "defaultconfigs"）
+     * @param tag          日志标签
+     */
+    private void syncConfigs(String sourceSubDir, String targetSubDir, String tag) {
         Path gameDir = FMLPaths.GAMEDIR.get();
-        Path kubejsConfigDir = gameDir.resolve("kubejs").resolve("config-manager");
-        Path targetConfigDir = gameDir.resolve("config");
+        Path kubejsConfigDir = gameDir.resolve("kubejs").resolve(sourceSubDir);
+        Path targetConfigDir = gameDir.resolve(targetSubDir);
         Path kubejsVersionFile = kubejsConfigDir.resolve("version.json");
         Path targetVersionFile = targetConfigDir.resolve("version.json");
 
-        // 确保 kubejs/config-manager 文件夹存在
+        // 确保 kubejs/<sourceSubDir> 文件夹存在
         if (!Files.isDirectory(kubejsConfigDir)) {
             try {
                 Files.createDirectories(kubejsConfigDir);
                 JsonObject defaultVersion = new JsonObject();
                 defaultVersion.addProperty("version", "1.0.0");
                 Files.writeString(kubejsVersionFile, GSON.toJson(defaultVersion));
-                LOGGER.info("[ConfigManager] Created kubejs/config-manager/ with default version.json");
+                LOGGER.info("[{}] Created kubejs/{}/ with default version.json", tag, sourceSubDir);
                 return;
             } catch (IOException e) {
-                LOGGER.error("[ConfigManager] Failed to create kubejs/config-manager/", e);
+                LOGGER.error("[{}] Failed to create kubejs/{}/", tag, sourceSubDir, e);
                 return;
             }
         }
@@ -49,35 +59,35 @@ public class ConfigManagerMod {
                 JsonObject defaultVersion = new JsonObject();
                 defaultVersion.addProperty("version", "1.0.0");
                 Files.writeString(kubejsVersionFile, GSON.toJson(defaultVersion));
-                LOGGER.info("[ConfigManager] Created default version.json");
+                LOGGER.info("[{}] Created default version.json", tag);
             } catch (IOException e) {
-                LOGGER.error("[ConfigManager] Failed to create version.json", e);
+                LOGGER.error("[{}] Failed to create version.json", tag, e);
                 return;
             }
         }
 
-        String kubejsVersion = readVersion(kubejsVersionFile);
+        String kubejsVersion = readVersion(kubejsVersionFile, tag);
         if (kubejsVersion == null) {
-            LOGGER.error("[ConfigManager] Failed to read version from kubejs/config-manager/version.json");
+            LOGGER.error("[{}] Failed to read version from kubejs/{}/version.json", tag, sourceSubDir);
             return;
         }
 
-        String targetVersion = readVersion(targetVersionFile);
+        String targetVersion = readVersion(targetVersionFile, tag);
 
         if (targetVersion == null) {
-            LOGGER.info("[ConfigManager] No config version found, skipping sync");
+            LOGGER.info("[{}] No {} version found, skipping sync", tag, targetSubDir);
             return;
         }
 
         if (compareVersions(kubejsVersion, targetVersion) > 0) {
-            LOGGER.info("[ConfigManager] New config version detected: {} -> {}, syncing...", targetVersion, kubejsVersion);
-            copyConfigFiles(kubejsConfigDir, targetConfigDir);
+            LOGGER.info("[{}] New {} version detected: {} -> {}, syncing...", tag, targetSubDir, targetVersion, kubejsVersion);
+            copyConfigFiles(kubejsConfigDir, targetConfigDir, tag);
         } else {
-            LOGGER.info("[ConfigManager] Config version unchanged ({}), skipping sync", targetVersion);
+            LOGGER.info("[{}] {} version unchanged ({}), skipping sync", tag, targetSubDir, targetVersion);
         }
     }
 
-    private String readVersion(Path versionFile) {
+    private String readVersion(Path versionFile, String tag) {
         if (!Files.isRegularFile(versionFile)) {
             return null;
         }
@@ -87,7 +97,7 @@ public class ConfigManagerMod {
                 return json.get("version").getAsString();
             }
         } catch (IOException e) {
-            LOGGER.error("[ConfigManager] Failed to read {}", versionFile, e);
+            LOGGER.error("[{}] Failed to read {}", tag, versionFile, e);
         }
         return null;
     }
@@ -111,13 +121,13 @@ public class ConfigManagerMod {
     }
 
     /**
-     * 将 kubejs/config-manager 下的所有文件（除 version.json 自身）复制到 config 目录。
+     * 将源目录下的所有文件（除 version.json 自身）复制到目标目录。
      */
-    private void copyConfigFiles(Path sourceDir, Path targetDir) {
+    private void copyConfigFiles(Path sourceDir, Path targetDir, String tag) {
         try {
             Files.createDirectories(targetDir);
         } catch (IOException e) {
-            LOGGER.error("[ConfigManager] Failed to create target config directory", e);
+            LOGGER.error("[{}] Failed to create target directory", tag, e);
             return;
         }
 
@@ -129,14 +139,14 @@ public class ConfigManagerMod {
                 try {
                     Files.createDirectories(targetFile.getParent());
                     Files.copy(sourceFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
-                    LOGGER.debug("[ConfigManager] Copied: {}", relativePath);
+                    LOGGER.debug("[{}] Copied: {}", tag, relativePath);
                 } catch (IOException e) {
-                    LOGGER.error("[ConfigManager] Failed to copy {}: {}", relativePath, e.getMessage());
+                    LOGGER.error("[{}] Failed to copy {}: {}", tag, relativePath, e.getMessage());
                 }
             });
-            LOGGER.info("[ConfigManager] Config sync completed");
+            LOGGER.info("[{}] Sync completed", tag);
         } catch (IOException e) {
-            LOGGER.error("[ConfigManager] Failed to walk source directory", e);
+            LOGGER.error("[{}] Failed to walk source directory", tag, e);
         }
     }
 }
